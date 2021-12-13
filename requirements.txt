@@ -1,0 +1,5 @@
+numpy>=1.19.5
+pre-commit>=2.0.0
+pygame>=2.1.0
+tensorflow>=2.7.0
+tensorflow-addons>=0.15.0

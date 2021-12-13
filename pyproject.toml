@@ -1,0 +1,21 @@
+[tool.black]
+target-version = ['py37', 'py38', 'py39']
+exclude = '''
+(
+  /(
+      \.eggs
+    | \.git
+    | \.venv
+    | build
+    | dist
+    | rl_pong/Fonts
+    | rl_pong/Images
+    | rl_pong/logs
+    | rl_pong/"Sound Effects"
+  )/
+)
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
