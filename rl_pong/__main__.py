@@ -7,7 +7,7 @@ from rl import Agent, ReplayMemory
 
 
 def main():
-    game = Pong([1920, 1080])
+    game = Pong([800, 800])
 
     agent = Agent(
         replay_memory=ReplayMemory(
@@ -30,7 +30,7 @@ def main():
         summary_writer = tf.summary.create_file_writer(agent_log_dir)
 
         print(
-            "Writing to TensorBoard. Launch TensorBoard with the command `tensorboard --logdir logs`."
+            f"Writing to TensorBoard. Launch TensorBoard with the command `tensorboard --logdir {PARENT_DIR}/logs`."
         )
 
     episodes = 100_000
@@ -38,11 +38,11 @@ def main():
 
     while game.running and game.num_games < episodes:
         # Check if the user closed the window or clicked pause
-        # game.user_interaction()
+        game.user_interaction()
 
         # Agent move
         action = agent.select_action(game.state)
-        state, reward, done = game.step(game.user_interaction())
+        state, reward, done = game.step(action)
 
         if state is not None:  # Don't train if the screen is paused
             # Train the agent

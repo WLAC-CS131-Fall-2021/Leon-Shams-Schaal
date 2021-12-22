@@ -15,13 +15,13 @@ WHITE = [225, 225, 225]
 PARENT_DIR = str(Path(__file__).parent) + "/"
 
 # Load in sounds
+master_channel = pygame.mixer.Channel(0)
+master_channel.set_volume(0)
+
 win_sound = pygame.mixer.Sound(PARENT_DIR + "Sound Effects/win-sound.wav")
 lose_sound = pygame.mixer.Sound(PARENT_DIR + "Sound Effects/lose-sound.wav")
 paddle_hit_sound = pygame.mixer.Sound(PARENT_DIR + "Sound Effects/paddle-hit.wav")
 wall_bounce_sound = pygame.mixer.Sound(PARENT_DIR + "Sound Effects/wall-bounce.wav")
-
-master_channel = pygame.mixer.Channel(0)
-master_channel.set_volume(0)
 
 
 def scale_angle(angle):
@@ -42,6 +42,7 @@ def lines_intersect(lines):
 
 class Ball(pygame.Rect):
     direction = 0
+    max_angle = np.pi / 3  # Steepest angle the ball can be hit at
 
     def __init__(self, size, speed, game):
         self.game = game
@@ -87,9 +88,41 @@ class Ball(pygame.Rect):
     def set_speed(self, speed):
         # Default speed - Ball speed at the beginning of the match
         # Base speed - Speed of the ball after n hits (increases linearly with every hit)
-        # Speed - The actual speed of the ball taking into acount the number of hits and the angle of the current hit
+        # Speed - The actual speed of the ball taking into account the number of hits and the angle of the current hit
         self.speed = self.base_speed = self.default_speed = (
             GAME_SPEED * self.game.screen_width * speed
+        )
+
+    def _check_for_collision(self, paddle):
+        # To prevent the ball from phasing through the paddle we
+        # track the path of the ball and check whether its path from
+        # the previous step the current one instersects with the paddle
+        current_bounding_points = self.bounding_points()
+        ball_lines = list(zip(current_bounding_points, self.previous_bounding_points))
+
+        paddle_corners = [
+            paddle.topleft,
+            paddle.topright,
+            paddle.bottomleft,
+            paddle.bottomright,
+        ]
+        paddle_lines = [
+            (point1, point2)
+            for point1, point2 in zip(
+                paddle_corners, paddle_corners[-1:] + paddle_corners[:-1]
+            )
+        ]
+
+        return any(
+            [
+                any(
+                    [
+                        lines_intersect([ball_line, paddle_line])
+                        for paddle_line in paddle_lines
+                    ]
+                )
+                for ball_line in ball_lines
+            ]
         )
 
     def update(self, *paddles):
@@ -99,26 +132,24 @@ class Ball(pygame.Rect):
         slow_down = 1 / 10 if time() - self.match_start_timestamp < 1 else 1
         self._x += slow_down * self.speed * np.cos(self.direction)
         self._y -= slow_down * self.speed * np.sin(self.direction)
-        self._y = np.clip(self._y, 0, self.game.screen_height - self.width)
 
         # Bounce the ball off the walls
         if self._y <= 0 or self._y >= self.game.screen_height - self.height:
             # The ball will overshoot the wall by a couple of pixels
             # To compensate the ball needs to be shifted back to the correct position
             # so it will bounce off the wall in the correct direction
-            y_direction = np.sign(np.sin(self.direction))
-            target_y = [self.game.screen_height - self.height, 0][
-                int((y_direction + 1) / 2)
-            ]
+            target_y = [self.game.screen_height - self.height, 0][int(self._y <= 0)]
             y_overshoot = target_y - self._y
             self._y += y_overshoot
-            self._x += y_overshoot / np.tan(self.direction)
+            self._x -= y_overshoot / np.tan(self.direction)
 
             self.direction *= -1
             master_channel.play(wall_bounce_sound)
 
+        # Sign of x-direction
         sign_direction = np.sign(np.cos(self.direction))
-        scaled_direction = int((sign_direction + 1) / 2)  # Direction on the scale 0-1
+        # Sign of x-direction on the scale 0-1
+        scaled_direction = int((sign_direction + 1) / 2)
 
         # Reset if there's a winner
         if self.x < -self.width or self.x > self.game.screen_width:
@@ -141,58 +172,23 @@ class Ball(pygame.Rect):
             if paddle == self.last_hit_paddle:
                 continue
 
-            # Check if ball collided with the paddle
-
-            # To prevent the ball from phasing through the paddle we
-            # track the path of the ball and check whether its path from
-            # the previous step the current one instersects with the paddle
-            current_bounding_points = self.bounding_points()
-            ball_lines = list(
-                zip(current_bounding_points, self.previous_bounding_points)
-            )
-
-            paddle_corners = [
-                paddle.topleft,
-                paddle.topright,
-                paddle.bottomleft,
-                paddle.bottomright,
-            ]
-            paddle_lines = [
-                (point1, point2)
-                for point1, point2 in zip(
-                    paddle_corners, paddle_corners[-1:] + paddle_corners[:-1]
-                )
-            ]
-
-            ball_path_intersects_paddle = any(
-                [
-                    any(
-                        [
-                            lines_intersect([ball_line, paddle_line])
-                            for paddle_line in paddle_lines
-                        ]
-                    )
-                    for ball_line in ball_lines
-                ]
-            )
-
-            if ball_path_intersects_paddle:
+            if self._check_for_collision(paddle):
                 self.last_hit_paddle = paddle
 
                 # Correct for the distance we went past the paddle
-                x_overshoot = paddle.side - self._x - scaled_direction * self.width
+                x_overshoot = paddle.side - (self._x + scaled_direction * self.width)
                 self._x += x_overshoot
                 self._y -= x_overshoot * np.tan(self.direction)
 
                 # Bounce ball off of paddle
+
                 # Calculate how much we should redirect depending on where
                 # on the paddle the ball hit
                 hit_offset = (self.centery - paddle.centery) / paddle.height
                 strike_redirect = sign_direction * (np.pi / 2) * hit_offset
 
                 # Prevent the ball from going off in an angle steeper than `max_angle`
-                max_angle = np.pi / 3
-                clip_bounds = [-max_angle, max_angle]
+                clip_bounds = [-self.max_angle, self.max_angle]
                 clip_bounds = scale_angle(np.multiply(sign_direction, clip_bounds))
 
                 # Bounce
@@ -211,8 +207,7 @@ class Ball(pygame.Rect):
 
                 master_channel.play(paddle_hit_sound)
 
-                # Move the ball again since we just moved it out of the paddle
-                # for error correction
+                # Take next step because it makes the bounces look more natural
                 self.update(*paddles)
 
         return False
@@ -257,7 +252,7 @@ class Paddle(pygame.Rect):
         dims = (0.02 * self.game.min_dim, 0.1 * self.game.min_dim)
         pos = [
             x_pos * self.game.screen_width - dims[0] / 2,
-            0,  # Just a placeholder
+            0,  # Just a placeholder. We'll vertically center soon
         ]
         super().__init__(pos, dims)
         self.vertically_center()
@@ -327,9 +322,9 @@ def load_img(img_path, size, pos):
 class Pong:
     background_color = [0, 100, 0]
 
-    start_ball_speed, end_ball_speed = 0.0025, 0.005
-    start_opponent_speed, end_opponent_speed = 0.1, 0.38  # 0.35
-    start_controlled_paddle_speed, end_controlled_paddle_speed = 1.3, 0.38
+    start_ball_speed, end_ball_speed = 0.0015, 0.0065
+    start_opponent_speed, end_opponent_speed = 0.15, 0.61
+    start_controlled_paddle_speed, end_controlled_paddle_speed = 2.5, 0.61
 
     difficulty_level = 0
     controlled_paddle_direction = 0  # Remembers last user key press
