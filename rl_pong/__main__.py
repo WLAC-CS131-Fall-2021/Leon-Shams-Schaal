@@ -2,8 +2,8 @@ from datetime import datetime
 
 import numpy as np
 import tensorflow as tf
-from pong import PARENT_DIR, Pong
-from rl import Agent, ReplayMemory
+from rl_pong.pong import PARENT_DIR, Pong
+from rl_pong.rl import Agent, ReplayMemory
 
 
 def main():
