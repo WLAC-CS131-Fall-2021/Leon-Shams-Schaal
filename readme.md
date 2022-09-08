@@ -1,4 +1,4 @@
-# Leon Shams-Schaal
+# Deep Q-learning in Pong
 
 I did my project on Deep Q-Learning, which is a method of applying machine learning to dynamic environments. In my video I describe the ins and outs of Deep Q-Learning and demonstrate its power by teaching an agent to play the game Pong.
 
